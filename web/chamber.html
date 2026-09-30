@@ -4,6 +4,17 @@
 <main><div class="page-title"><div><h1>Chamber situation</h1><div class="muted">Gate, cycle, queue and signal state</div></div><button id="refresh">Refresh</button></div><div class="grid" id="chambers"></div><div class="message" id="message"></div></main>
 <script src="/assets/app.js"></script><script>
 const {api,shortID,setMessage}=window.LockFlow; const host=document.querySelector('#chambers'); const message=document.querySelector('#message');
-async function load(){const items=await api('/api/chambers'); host.innerHTML=items.map((item)=>`<section class="panel"><h2>${item.chamber_id}</h2><div class="metrics"><div class="metric">Stage<strong>${item.cycle?.stage||'idle'}</strong></div><div class="metric">Upstream<strong>${item.gates?.upstream||'-'}</strong></div><div class="metric">Downstream<strong>${item.gates?.downstream||'-'}</strong></div></div><table><tr><th>Cycle</th><td>${shortID(item.cycle?.id)}</td></tr><tr><th>Queue</th><td>${item.queue?.length||0} vessel(s)</td></tr><tr><th>Emergency</th><td>${item.emergency?.status||'idle'}</td></tr></table></section>`).join(''); setMessage(message,'');}
+const basis = (entry) => `${entry.has_eta ? 'ETA' : 'FCFS'} ${new Date(entry.arrival_at).toLocaleTimeString()}`;
+const queueRows = (entries) => !entries?.length ? '<tr><td colspan="4" class="muted">Queue empty</td></tr>'
+  : entries.map((entry, i) => `<tr><td>${i + 1}</td><td>${shortID(entry.plan_id)} / ${entry.vessel?.call_sign || shortID(entry.vessel?.id)}</td><td>p${entry.priority} · ${basis(entry)}</td><td>${entry.released ? '<span class="status">released · locked</span>' : '<span class="muted">waiting</span>'}</td></tr>`).join('');
+async function load(){
+  const items=await api('/api/chambers');
+  host.innerHTML=items.map((item)=>`<section class="panel"><h2>${item.chamber_id}</h2><div class="metrics"><div class="metric">Stage<strong>${item.cycle?.stage||'idle'}</strong></div><div class="metric">Upstream<strong>${item.gates?.upstream||'-'}</strong></div><div class="metric">Downstream<strong>${item.gates?.downstream||'-'}</strong></div></div><table><tr><th>Cycle</th><td>${shortID(item.cycle?.id)}</td></tr><tr><th>Emergency</th><td>${item.emergency?.status||'idle'}</td></tr></table>
+    <h2 style="margin-top:14px">Admission queue <span class="muted">(${item.queue?.length||0})</span></h2>
+    <div class="muted" style="margin-bottom:8px">Released vessels are locked at the front; waiting vessels follow priority then arrival (ETA / FCFS).</div>
+    <table><thead><tr><th>#</th><th>Plan / vessel</th><th>Order basis</th><th>Status</th></tr></thead><tbody>${queueRows(item.queue)}</tbody></table>
+  </section>`).join('');
+  setMessage(message,'');
+}
 document.querySelector('#refresh').addEventListener('click',()=>load().catch((e)=>setMessage(message,e.message))); load().catch((e)=>setMessage(message,e.message));
 </script></body></html>

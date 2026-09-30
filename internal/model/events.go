@@ -11,8 +11,9 @@ import (
 type EventType string
 
 const (
-	EventPlanCreated      EventType = "plan.created"
-	EventPlanCancelled    EventType = "plan.cancelled"
+	EventPlanCreated       EventType = "plan.created"
+	EventPlanCancelled     EventType = "plan.cancelled"
+	EventPlanReprioritized EventType = "plan.reprioritized"
 	EventCycleCreated     EventType = "cycle.created"
 	EventCycleAdvanced    EventType = "cycle.advanced"
 	EventCommandQueued    EventType = "command.queued"

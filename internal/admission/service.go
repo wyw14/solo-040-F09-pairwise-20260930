@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/wyw14/cry-96/internal/journal"
 	"github.com/wyw14/cry-96/internal/model"
 )
@@ -23,13 +24,28 @@ func NewService(controller *Controller, recorder *journal.Recorder, now func() t
 }
 
 func (s *Service) Enqueue(ctx context.Context, plan model.ConvoyPlan) error {
-	if err := s.controller.queue.Add(plan.ChamberID, plan.ID, plan.Vessels); err != nil {
+	if err := s.controller.queue.Add(plan.ChamberID, plan.ID, plan.Vessels, plan.Priority, plan.ArrivalAt(), plan.ETA != nil); err != nil {
 		return err
 	}
 	_, err := s.recorder.Record(ctx, plan.ChamberID, model.EventPlanCreated, plan.ID, 0, map[string]any{
-		"plan_id": plan.ID, "queued": len(plan.Vessels), "at": s.now().UTC(),
+		"plan_id": plan.ID, "queued": len(plan.Vessels),
+		"priority": plan.Priority, "arrival_at": plan.ArrivalAt(), "at": s.now().UTC(),
 	})
 	return err
+}
+
+// Reprioritize reorders a not-yet-released plan's waiting vessels and
+// records the new ordering basis. Released plans cannot be reordered.
+func (s *Service) Reprioritize(ctx context.Context, plan model.ConvoyPlan) (int, error) {
+	affected, err := s.controller.queue.Reprioritize(plan.ChamberID, plan.ID, plan.Priority, plan.ArrivalAt(), plan.ETA != nil)
+	if err != nil {
+		return 0, err
+	}
+	_, err = s.recorder.Record(ctx, plan.ChamberID, model.EventPlanReprioritized, plan.ID, 0, map[string]any{
+		"plan_id": plan.ID, "reordered": affected,
+		"priority": plan.Priority, "arrival_at": plan.ArrivalAt(), "at": s.now().UTC(),
+	})
+	return affected, err
 }
 
 func (s *Service) Admit(ctx context.Context, cycle model.TransitCycle) (Decision, error) {
@@ -39,6 +55,10 @@ func (s *Service) Admit(ctx context.Context, cycle model.TransitCycle) (Decision
 	}
 	_, err = s.recorder.Record(ctx, cycle.ChamberID, model.EventSignalChanged, cycle.ID, cycle.Generation, decision)
 	return decision, err
+}
+
+func (s *Service) PlanReleased(chamberID string, planID uuid.UUID) bool {
+	return s.controller.queue.PlanReleased(chamberID, planID)
 }
 
 func (s *Service) RemovePlan(chamberID string, plan model.ConvoyPlan) []QueueEntry {

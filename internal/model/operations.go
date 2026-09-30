@@ -21,25 +21,48 @@ func NewVessel(name, callSign string, lengthM float64) (Vessel, error) {
 	return Vessel{ID: uuid.New(), Name: name, CallSign: callSign, LengthM: lengthM}, nil
 }
 
+// Priority ranks waiting convoy plans; smaller values are released first.
+const DefaultPriority = 100
+
 type ConvoyPlan struct {
-	ID         uuid.UUID `json:"id"`
-	ChamberID  string    `json:"chamber_id"`
-	Direction  Direction `json:"direction"`
-	Vessels    []Vessel  `json:"vessels"`
-	CreatedAt  time.Time `json:"created_at"`
-	Cancelled  bool      `json:"cancelled"`
-	CancelNote string    `json:"cancel_note,omitempty"`
+	ID          uuid.UUID  `json:"id"`
+	ChamberID   string     `json:"chamber_id"`
+	Direction   Direction  `json:"direction"`
+	Vessels     []Vessel   `json:"vessels"`
+	Priority    int        `json:"priority"`
+	ETA         *time.Time `json:"eta,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	Cancelled   bool       `json:"cancelled"`
+	CancelNote  string     `json:"cancel_note,omitempty"`
 }
 
-func NewConvoyPlan(chamberID string, direction Direction, vessels []Vessel, now time.Time) (ConvoyPlan, error) {
+func NewConvoyPlan(chamberID string, direction Direction, vessels []Vessel, priority int, eta *time.Time, now time.Time) (ConvoyPlan, error) {
 	if chamberID == "" || !direction.Valid() || len(vessels) == 0 {
 		return ConvoyPlan{}, errors.New("plan requires chamber, direction and vessels")
 	}
+	if priority <= 0 {
+		priority = DefaultPriority
+	}
 	copyOfVessels := append([]Vessel(nil), vessels...)
+	var arrival *time.Time
+	if eta != nil {
+		utc := eta.UTC()
+		arrival = &utc
+	}
 	return ConvoyPlan{
 		ID: uuid.New(), ChamberID: chamberID, Direction: direction,
-		Vessels: copyOfVessels, CreatedAt: now.UTC(),
+		Vessels: copyOfVessels, Priority: priority, ETA: arrival,
+		CreatedAt: now.UTC(),
 	}, nil
+}
+
+// ArrivalAt is the ordering timestamp used within one priority level:
+// the announced ETA when set, otherwise the plan creation time (FCFS).
+func (p ConvoyPlan) ArrivalAt() time.Time {
+	if p.ETA != nil {
+		return *p.ETA
+	}
+	return p.CreatedAt
 }
 
 func (p ConvoyPlan) Clone() ConvoyPlan {

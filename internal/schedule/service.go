@@ -3,6 +3,7 @@ package schedule
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/wyw14/cry-96/internal/model"
@@ -19,8 +20,18 @@ func NewService(planner *Planner, publisher *signal.Publisher) *Service {
 	return &Service{planner: planner, publisher: publisher}
 }
 
-func (s *Service) Create(ctx context.Context, chamberID string, direction model.Direction, vessels []model.Vessel) (model.ConvoyPlan, error) {
-	return s.planner.Create(ctx, chamberID, direction, vessels)
+func (s *Service) Create(ctx context.Context, chamberID string, direction model.Direction, vessels []model.Vessel, order PlanOrder) (model.ConvoyPlan, error) {
+	return s.planner.Create(ctx, chamberID, direction, vessels, order)
+}
+
+// Reprioritize adjusts ordering for a plan that has not released a vessel.
+func (s *Service) Reprioritize(ctx context.Context, planID uuid.UUID, priority int, eta *time.Time) (model.ConvoyPlan, error) {
+	return s.planner.Reprioritize(ctx, planID, PlanOrder{Priority: priority, ETA: eta})
+}
+
+// PlanReleased reports whether any of the plan's vessels has been admitted.
+func (s *Service) PlanReleased(plan model.ConvoyPlan) bool {
+	return s.planner.PlanReleased(plan)
 }
 
 func (s *Service) Publish(ctx context.Context, planID uuid.UUID, cycle model.TransitCycle) (signal.Publication, error) {
